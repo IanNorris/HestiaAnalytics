@@ -1,0 +1,40 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 15
+VisualStudioVersion = 15.0.26430.12
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HestiaCore", "HestiaCore\HestiaCore.csproj", "{E5FD55C1-F161-4A04-9CA3-7D038A1E89E8}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HestiaAnalyticsServer", "HestiaAnalyticsServer\HestiaAnalyticsServer.csproj", "{A652CE5B-8F23-42EE-8C50-B00A17F97CCC}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HestiaAnalyticsVision", "HestiaAnalyticsVision\HestiaAnalyticsVision.csproj", "{B3F094F5-DE30-4907-A96A-BF2057B75F51}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SightHound.NET", "SightHound.NET\SightHound.NET.csproj", "{873BAFEE-1E80-4EEE-BDCE-6E2202F9A426}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{E5FD55C1-F161-4A04-9CA3-7D038A1E89E8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E5FD55C1-F161-4A04-9CA3-7D038A1E89E8}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E5FD55C1-F161-4A04-9CA3-7D038A1E89E8}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E5FD55C1-F161-4A04-9CA3-7D038A1E89E8}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A652CE5B-8F23-42EE-8C50-B00A17F97CCC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A652CE5B-8F23-42EE-8C50-B00A17F97CCC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A652CE5B-8F23-42EE-8C50-B00A17F97CCC}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A652CE5B-8F23-42EE-8C50-B00A17F97CCC}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B3F094F5-DE30-4907-A96A-BF2057B75F51}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B3F094F5-DE30-4907-A96A-BF2057B75F51}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B3F094F5-DE30-4907-A96A-BF2057B75F51}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B3F094F5-DE30-4907-A96A-BF2057B75F51}.Release|Any CPU.Build.0 = Release|Any CPU
+		{873BAFEE-1E80-4EEE-BDCE-6E2202F9A426}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{873BAFEE-1E80-4EEE-BDCE-6E2202F9A426}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{873BAFEE-1E80-4EEE-BDCE-6E2202F9A426}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{873BAFEE-1E80-4EEE-BDCE-6E2202F9A426}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal
