@@ -58,6 +58,11 @@ namespace HestiaCore.Source.Serialization
 	{
 		private static object XPathNavigatorToObject(XPathNavigator Child)
 		{
+			if( Child.Name == "value")
+			{
+				Child.MoveToFirstChild();
+			}
+
 			if (Child.Name == "array")
 			{
 				XPathNavigator ArrayNavigator = Child.CreateNavigator();
@@ -91,6 +96,10 @@ namespace HestiaCore.Source.Serialization
 			else if (Child.Name == "timeDate.iso8601")
 			{
 				return DateTime.Parse(Child.Value);
+			}
+			else if(Child.Name == "nil")
+			{
+				return null;
 			}
 
 			throw new Exception($"Unrecognized type {Child.Name}");
@@ -167,24 +176,38 @@ namespace HestiaCore.Source.Serialization
 			var Fields = Type.GetFields(BindingFlags.Instance | BindingFlags.Public);
 			foreach (FieldInfo Field in Fields)
 			{
+				Type FieldType = Field.FieldType;
 				object FieldData = Data[DataIndex];
-				if (Field.FieldType == FieldData.GetType())
+				if(FieldData == null )
+				{
+					Field.SetValue( BoxedResult, null );
+					DataIndex++;
+					continue;
+				}
+
+				//Special case for nullable types. 
+				if ( FieldType.IsGenericType && FieldType.GetGenericTypeDefinition() == typeof(Nullable<>))
+				{
+					FieldType = FieldType.GetGenericArguments()[0];
+				}
+
+				if (FieldType == FieldData.GetType())
 				{
 					Field.SetValue( BoxedResult, FieldData );
 				}
 				else if( FieldData.GetType() == typeof(List<object>) )
 				{
-					if( Field.FieldType.IsGenericType && Field.FieldType.GetGenericTypeDefinition() == typeof(List<>) )
+					if( FieldType.IsGenericType && FieldType.GetGenericTypeDefinition() == typeof(List<>) )
 					{
-						MethodInfo AddMethod = typeof(List<>).MakeGenericType( new Type[] { Field.FieldType.GetGenericArguments()[0] } ).GetMethod("Add");
-						var NewList = Activator.CreateInstance( Field.FieldType );
+						MethodInfo AddMethod = typeof(List<>).MakeGenericType( new Type[] { FieldType.GetGenericArguments()[0] } ).GetMethod("Add");
+						var NewList = Activator.CreateInstance(FieldType);
 
 						var ListData = (List<object>)FieldData;
 						foreach( var Item in ListData)
 						{
 							if (Item.GetType().IsGenericType && Item.GetType().GetGenericTypeDefinition() == typeof(List<>))
 							{
-								MethodInfo ToStructMethod = typeof(XmlSerializer).GetMethod("ListOfObjectsToObject").MakeGenericMethod(new Type[] { Field.FieldType.GetGenericArguments()[0] });
+								MethodInfo ToStructMethod = typeof(XmlSerializer).GetMethod("ListOfObjectsToObject").MakeGenericMethod(new Type[] { FieldType.GetGenericArguments()[0] });
 								object StructResult = ToStructMethod.Invoke(null, new object[] { Item });
 
 								AddMethod.Invoke(NewList, new object[] { StructResult } );
@@ -199,7 +222,7 @@ namespace HestiaCore.Source.Serialization
 					}
 					else
 					{
-						MethodInfo ToStructMethod = typeof(XmlSerializer).GetMethod("ListOfObjectsToObject").MakeGenericMethod(new Type[] { Field.FieldType });
+						MethodInfo ToStructMethod = typeof(XmlSerializer).GetMethod("ListOfObjectsToObject").MakeGenericMethod(new Type[] { FieldType });
 						object StructResult = ToStructMethod.Invoke(null, new object[] { FieldData });
 
 						Field.SetValue(BoxedResult, StructResult);

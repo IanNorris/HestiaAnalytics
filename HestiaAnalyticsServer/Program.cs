@@ -46,51 +46,86 @@ namespace HestiaAnalyticsServer
 			var Endpoint = new SecureEndpoint( Settings.SighthoundAPI.Hostname, Settings.SighthoundAPI.CertificateAuthorityThumbprint, Settings.SighthoundAPI.Port );
 			Endpoint.AddBasicAuthenticationHeader( Settings.SighthoundAPI.Username, Settings.SighthoundAPI.Password );
 
-			/*var Response = SightHoundVideoListener.SighthoundRPC.SendRPCCommand(Endpoint, "remoteGetClipsForRule", new System.Collections.Generic.List<SightHoundVideoListener.SighthoundRPCValue>
-			{
-				new SighthoundRPCValue("Front Door"), //camera
-				new SighthoundRPCValue("People"), //rule
-				new SighthoundRPCValue(1497310149.982), //when
-				new SighthoundRPCValue(25), //a
-				new SighthoundRPCValue(0), //b
-				new SighthoundRPCValue(false), //oldestFirst
-			});*/
-
-			/*ExpandoObject objectIds = new { objectIds = new int[] { 8456, 8455 } }.CreateExpando();
-
-			var Response = SightHoundVideoListener.SighthoundRPC.SendRPCCommand(Endpoint, "remoteGetClipUri", new System.Collections.Generic.List<SightHoundVideoListener.SighthoundRPCValue>
-			{
-				new SighthoundRPCValue("Front Door"), //camera
-				new SighthoundRPCValue( new int[]{ 1497364274, 51 } ), //start time (and ms)
-				new SighthoundRPCValue( new int[]{ 1497364509, 0} ), //start time (and ms)
-				new SighthoundRPCValue( 804 ), //URL
-				new SighthoundRPCValue( "video/h264" ), //type
-				new SighthoundRPCValue( objectIds ), //type
-			});
-
-			Response.Wait();*/
+			List<string> CameraNames;
 
 			{
-				var ResponsePromise = Methods.GetCameraNames(Endpoint);
+				var ResponsePromise = Sighthound.GetCameraNames(Endpoint);
+				var Response = ResponsePromise.Get();
+				CameraNames = Response.CameraNames;
+			}
+
+			{
+				var ResponsePromise = Sighthound.GetRulesForCamera(Endpoint, "Front Door" );
 				var Response = ResponsePromise.Get();
 			}
 
 			{
-				var ResponsePromise = Methods.GetRulesForCamera(Endpoint, new GetRulesForCameraRequest { CameraName = "Front Door" } );
+				var ResponsePromise = Sighthound.EnableRule(Endpoint, "People in Front Door", true);
+				var Response = ResponsePromise.Get();
+			}
+
+			{
+				var ResponsePromise = Sighthound.EnableCamera(Endpoint, "Front Door", true);
+				var Response = ResponsePromise.Get();
+			}
+
+			{
+				var ResponsePromise = Sighthound.GetLiveCameras(Endpoint);
+				var Response = ResponsePromise.Get();
+			}
+
+			{
+				var ResponsePromise = Sighthound.GetLiveCameraUri(Endpoint, "Front Door", VideoType.Jpeg );
+				var Response = ResponsePromise.Get();
+			}
+
+			{
+				var ResponsePromise = Sighthound.GetRuleInfo(Endpoint, "Unknown objects outside Bush in Front Door");
 				var Response = ResponsePromise.Get();
 			}
 
 			{
 				var Request = new GetClipsForRuleRequest();
 				Request.CameraName = "Front Door";
-				Request.RuleName = "People";
-				Request.From = 1497364274.0;
+				Request.RuleName = "Unknown objects outside Bush in Front Door";
+				Request.From = 1497722643.242;
 				Request.Count = 25;
 				Request.Page = 0;
 				Request.OldestFirst = false;
 
-				var ResponsePromise = Methods.GetRulesForCamera(Endpoint, Request);
+				var ResponsePromise = Sighthound.GetClipsForRule(Endpoint, Request);
 				var Response = ResponsePromise.Get();
+
+				{
+					List<ThumbnailClipRequest> Clips = new List<ThumbnailClipRequest>();
+					
+					foreach( var Clip in Response.Clips )
+					{
+						ThumbnailClipRequest NewClip = new ThumbnailClipRequest();
+						NewClip.CameraName = Clip.CameraName;
+						NewClip.ThumbnailTime = Clip.ThumbnailTime;
+						Clips.Add(NewClip);
+					}
+
+					var ResponsePromiseq = Sighthound.GetClipThumbnails(Endpoint, Clips, 320, 240 );
+					var Responseq = ResponsePromiseq.Get();
+				}
+			}
+
+			{
+				foreach(var Cam in CameraNames)
+				{
+					var ResponsePromise = Sighthound.GetCameraStatus(Endpoint, Cam);
+					var Response = ResponsePromise.Get();
+				}
+			}
+
+			{
+				foreach (var Cam in CameraNames)
+				{
+					var ResponsePromise = Sighthound.GetCameraStatus(Endpoint, Cam);
+					var Response = ResponsePromise.Get();
+				}
 			}
 
 			{
@@ -104,11 +139,11 @@ namespace HestiaAnalyticsServer
 				Request.ContentType = "video/h264";
 				Request.Objects.ObjectIdArray = new List < int > { 8456, 8455 };
 
-				var ResponsePromise = Methods.GetClipUri( Endpoint, Request );
+				var ResponsePromise = Sighthound.GetClipUri( Endpoint, Request );
 				var Response = ResponsePromise.Get();
 			}
 
-			
+
 		}
 	}
 }
