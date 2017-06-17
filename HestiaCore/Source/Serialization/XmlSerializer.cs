@@ -128,7 +128,7 @@ namespace HestiaCore.Source.Serialization
 				}
 				else if( FieldData.GetType() == typeof(List<object>))
 				{
-					if( Field.FieldType.GetGenericTypeDefinition() == typeof(List<>) )
+					if( Field.FieldType.IsGenericType && Field.FieldType.GetGenericTypeDefinition() == typeof(List<>) )
 					{
 						MethodInfo AddMethod = typeof(List<>).MakeGenericType( new Type[] { Field.FieldType.GetGenericArguments()[0] } ).GetMethod("Add");
 						var NewList = Activator.CreateInstance( Field.FieldType );
