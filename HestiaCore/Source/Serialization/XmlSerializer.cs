@@ -176,6 +176,11 @@ namespace HestiaCore.Source.Serialization
 			var Fields = Type.GetFields(BindingFlags.Instance | BindingFlags.Public);
 			foreach (FieldInfo Field in Fields)
 			{
+				if( DataIndex >= Data.Count )
+				{
+					throw new Exception($"Not enough data available to fille {Type.Name}. There are {Fields.Length} but only {Data.Count} were provided.");
+				}
+
 				Type FieldType = Field.FieldType;
 				object FieldData = Data[DataIndex];
 				if(FieldData == null )
@@ -248,6 +253,11 @@ namespace HestiaCore.Source.Serialization
 		public static T XMLRPCToObject<T>( Stream XMLStream )
 		{
 			List<object> Data = ObjectsFromXMLRPC( XMLStream );
+
+			if( Data.Count == 0 || (Data.Count == 1 && Data[0] == null) )
+			{
+				return default(T);
+			}
 
 			return ListOfObjectsToObject<T>( Data );
 		}

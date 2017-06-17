@@ -8,26 +8,31 @@ using System.Threading.Tasks;
 
 namespace HestiaAnalyticsServer
 {
-	public class AzureCognitiveAPI
+	public class AzureCognitiveAPISettings
 	{
 		public string RegionName;
 		public string SubscriptionKey;
 		public string CertificateAuthorityThumbprint;
 	}
 
-	public class SighthoundAPI
+	public class SighthoundAPISettings
 	{
 		public string Hostname;
 		public uint Port;
 		public string Username;
 		public string Password;
 		public string CertificateAuthorityThumbprint;
+
+		public bool AllowAllObjectsRule;
+
+		public int UpdateStateIntervalMS;
+		public int UpdateIntervalMS;
 	}
 
 	public class Settings
 	{
-		public AzureCognitiveAPI AzureCognitiveAPI;
-		public SighthoundAPI SighthoundAPI;
+		public AzureCognitiveAPISettings AzureCognitiveAPI;
+		public SighthoundAPISettings SighthoundAPI;
 
 		public static Settings LoadSettings( string AppName )
 		{
