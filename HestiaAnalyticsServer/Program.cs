@@ -14,6 +14,21 @@ namespace HestiaAnalyticsServer
 			Settings = Settings.LoadSettings("HestiaAnalytics");
 
 			SightHoundListener = new SightHoundListener(Settings.SighthoundAPI);
+			
+			SightHoundListener.OnCameraStatusChanged += (name, oldEnabled, enabled, oldStatus, status, firstTime) =>
+			{
+				string OldEnabledString = oldEnabled ? "enabled" : "disabled";
+				string NewEnabledString = enabled ? "enabled" : "disabled";
+				if( firstTime )
+				{
+					System.Console.Out.WriteLine($"Camera \"{name}\" was found, now {NewEnabledString} and {status}.");
+				}
+				else
+				{
+					System.Console.Out.WriteLine($"Camera \"{name}\" was {OldEnabledString} and {oldStatus}, now {NewEnabledString} and {status}." );
+				}
+			};
+
 			SightHoundListener.Start();
 
 			SightHoundListener.Wait();

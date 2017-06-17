@@ -33,10 +33,10 @@ namespace HestiaAnalyticsServer
 		private long TimeOfLastClipGather = 0;
 		private Dictionary<string, Camera> Cameras;
 
-		public delegate void OnCameraStatusChangedDelegate(string Camera, bool OldEnabled, bool NewEnabled, string OldStatus, string NewStatus);
+		public delegate void OnCameraStatusChangedDelegate(string Camera, bool OldEnabled, bool NewEnabled, string OldStatus, string NewStatus, bool FirstTime);
 		public OnCameraStatusChangedDelegate OnCameraStatusChanged;
 
-		public delegate void OnCameraRuleChangedDelegate(string Camera, string Rule, bool OldEnabled, bool NewEnabled);
+		public delegate void OnCameraRuleChangedDelegate(string Camera, string Rule, bool OldEnabled, bool NewEnabled, bool FirstTIme);
 		public OnCameraRuleChangedDelegate OnCameraRuleChanged;
 
 		private void ThreadMain()
@@ -108,8 +108,12 @@ namespace HestiaAnalyticsServer
 						{
 							if( OldCamera.Enabled != Camera.Enabled || OldCamera.Status != Camera.Status )
 							{
-								OnCameraStatusChanged(Cam, OldCamera.Enabled, Camera.Enabled, OldCamera.Status, Camera.Status);
+								OnCameraStatusChanged(Cam, OldCamera.Enabled, Camera.Enabled, OldCamera.Status, Camera.Status, OldCameras == null);
 							}
+						}
+						else
+						{
+							OnCameraStatusChanged(Cam, false, Camera.Enabled, "off", Camera.Status, OldCameras == null);
 						}
 					}
 					else
@@ -117,7 +121,7 @@ namespace HestiaAnalyticsServer
 						Camera OldCamera;
 						if (OldCameras != null && OldCameras.TryGetValue(Cam, out OldCamera))
 						{
-							OnCameraStatusChanged(Cam, OldCamera.Enabled, false, OldCamera.Status, "off");
+							OnCameraStatusChanged(Cam, OldCamera.Enabled, false, OldCamera.Status, "off", OldCameras == null);
 						}
 					}
 				}
