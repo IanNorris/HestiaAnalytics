@@ -76,6 +76,24 @@ namespace HestiaAnalyticsServer
 			}
 
 			{
+				var ResponsePromise = Methods.GetRulesForCamera(Endpoint, new GetRulesForCameraRequest { CameraName = "Front Door" } );
+				var Response = ResponsePromise.Get();
+			}
+
+			{
+				var Request = new GetClipsForRuleRequest();
+				Request.CameraName = "Front Door";
+				Request.RuleName = "People";
+				Request.From = 1497364274.0;
+				Request.Count = 25;
+				Request.Page = 0;
+				Request.OldestFirst = false;
+
+				var ResponsePromise = Methods.GetRulesForCamera(Endpoint, Request);
+				var Response = ResponsePromise.Get();
+			}
+
+			{
 				GetClipUriRequest Request = new GetClipUriRequest();
 				Request.CameraName = "Front Door";
 				Request.Start.Seconds = 1497364274;
@@ -84,7 +102,7 @@ namespace HestiaAnalyticsServer
 				Request.End.Milliseconds = 0;
 				Request.UriId = 804;
 				Request.ContentType = "video/h264";
-				Request.ObjectIds.ObjectIdArray = new List < int > { 8456, 8455 };
+				Request.Objects.ObjectIdArray = new List < int > { 8456, 8455 };
 
 				var ResponsePromise = Methods.GetClipUri( Endpoint, Request );
 				var Response = ResponsePromise.Get();

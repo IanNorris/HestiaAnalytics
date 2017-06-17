@@ -7,6 +7,32 @@ using System.Xml;
 
 namespace HestiaCore.Source.Serialization
 {
+	[IsRemoteStructAttribute]
+	public class Fault : Exception
+	{
+		public Fault() : base() {}
+
+		public Fault( int Code, string Desc ) : base()
+		{
+			FaultCode = Code;
+			Description = Desc;
+		}
+
+		[RemoteParameterNameAttribute("faultCode")]
+		public int FaultCode;
+
+		[RemoteParameterNameAttribute("faultString")]
+		public string Description;
+
+		public override string Message
+		{
+			get
+			{
+				return $"{FaultCode}: {Description}";
+			}
+		}
+	}
+
 	[AttributeUsage(AttributeTargets.Class|AttributeTargets.Struct)]
 	public class IsRemoteArrayAttribute : Attribute
 	{
@@ -36,6 +62,13 @@ namespace HestiaCore.Source.Serialization
 			{
 				XPathNavigator ArrayNavigator = Child.CreateNavigator();
 				XPathNodeIterator ArrayIterator = ArrayNavigator.Select("data/value");
+
+				return XPathIteratorToList(ArrayIterator);
+			}
+			else if (Child.Name == "struct")
+			{
+				XPathNavigator ArrayNavigator = Child.CreateNavigator();
+				XPathNodeIterator ArrayIterator = ArrayNavigator.Select("member/value");
 
 				return XPathIteratorToList(ArrayIterator);
 			}
@@ -83,7 +116,7 @@ namespace HestiaCore.Source.Serialization
 
 			Navigator.MoveToRoot();
 			Navigator.MoveToFirstChild();
-
+			
 			XPathNodeIterator PathIter = Navigator.Select("params/param/value/array/data/value");
 			if( PathIter.Count > 0 )
 			{
@@ -93,12 +126,25 @@ namespace HestiaCore.Source.Serialization
 			{
 				XPathNodeIterator ValueIter = Navigator.Select("params/param/value");
 
-				ValueIter.MoveNext();
+				if (ValueIter.Count > 0)
+				{
+					ValueIter.MoveNext();
 
-				List<object> Children = new List<object>();
+					List<object> Children = new List<object>();
 
-				Children.Add(XPathNavigatorToObject(ValueIter.Current));
-				return Children;
+					Children.Add(XPathNavigatorToObject(ValueIter.Current));
+					return Children;
+				}
+				else
+				{
+					XPathNodeIterator FaultIter = Navigator.Select("fault");
+
+					FaultIter.MoveNext(); //method
+					FaultIter.Current.MoveToFirstChild(); //fault
+					FaultIter.Current.MoveToFirstChild(); //value
+
+					throw ListOfObjectsToObject<Fault>( (List<object>)XPathNavigatorToObject(FaultIter.Current));
+				}
 			}
 		}
 
@@ -126,7 +172,7 @@ namespace HestiaCore.Source.Serialization
 				{
 					Field.SetValue( BoxedResult, FieldData );
 				}
-				else if( FieldData.GetType() == typeof(List<object>))
+				else if( FieldData.GetType() == typeof(List<object>) )
 				{
 					if( Field.FieldType.IsGenericType && Field.FieldType.GetGenericTypeDefinition() == typeof(List<>) )
 					{
@@ -136,7 +182,17 @@ namespace HestiaCore.Source.Serialization
 						var ListData = (List<object>)FieldData;
 						foreach( var Item in ListData)
 						{
-							AddMethod.Invoke( NewList, new object[] { Item } );
+							if (Item.GetType().IsGenericType && Item.GetType().GetGenericTypeDefinition() == typeof(List<>))
+							{
+								MethodInfo ToStructMethod = typeof(XmlSerializer).GetMethod("ListOfObjectsToObject").MakeGenericMethod(new Type[] { Field.FieldType.GetGenericArguments()[0] });
+								object StructResult = ToStructMethod.Invoke(null, new object[] { Item });
+
+								AddMethod.Invoke(NewList, new object[] { StructResult } );
+							}
+							else
+							{
+								AddMethod.Invoke(NewList, new object[] { Item });
+							}
 						}
 					
 						Field.SetValue( BoxedResult, NewList);
@@ -249,7 +305,16 @@ namespace HestiaCore.Source.Serialization
 			else
 			{
 				Writer.WriteStartElement(TypeToXMLRPCTypeName(ObjectType));
-				Writer.WriteValue( Object );
+
+				if( Object.GetType() == typeof(bool) )
+				{
+					Writer.WriteValue( Convert.ToBoolean(Object) ? "1" : "0" );
+				}
+				else
+				{
+					Writer.WriteValue( Object );
+				}
+
 				Writer.WriteEndElement();
 			}
 
