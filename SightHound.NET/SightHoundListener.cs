@@ -7,7 +7,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace HestiaAnalyticsServer
+namespace SighthoundAPI
 {
 	public class SightHoundListener
 	{
@@ -24,7 +24,7 @@ namespace HestiaAnalyticsServer
 		}
 
 		private SecureEndpoint SighthoundEndpoint;
-		private SighthoundAPISettings Settings;
+		private SighthoundSettings Settings;
 		private Thread WorkerThread;
 		private bool Running = true;
 
@@ -53,7 +53,7 @@ namespace HestiaAnalyticsServer
 			}
 		}
 
-		public SightHoundListener( SighthoundAPISettings Settings )
+		public SightHoundListener( SighthoundSettings Settings )
 		{
 			this.Settings = Settings;
 

@@ -1,4 +1,5 @@
 ﻿using Newtonsoft.Json;
+using SighthoundAPI;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -14,25 +15,11 @@ namespace HestiaAnalyticsServer
 		public string SubscriptionKey;
 		public string CertificateAuthorityThumbprint;
 	}
-
-	public class SighthoundAPISettings
-	{
-		public string Hostname;
-		public uint Port;
-		public string Username;
-		public string Password;
-		public string CertificateAuthorityThumbprint;
-
-		public bool AllowAllObjectsRule;
-
-		public int UpdateStateIntervalMS;
-		public int UpdateIntervalMS;
-	}
-
+	
 	public class Settings
 	{
 		public AzureCognitiveAPISettings AzureCognitiveAPI;
-		public SighthoundAPISettings SighthoundAPI;
+		public SighthoundSettings SighthoundAPI;
 
 		public static Settings LoadSettings( string AppName )
 		{

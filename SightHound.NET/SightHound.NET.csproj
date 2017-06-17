@@ -43,7 +43,9 @@
   <ItemGroup>
     <Compile Include="SighthoundAPI.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="SightHoundListener.cs" />
     <Compile Include="SighthoundRPC.cs" />
+    <Compile Include="SighthoundSettings.cs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\HestiaCore\HestiaCore.csproj">
