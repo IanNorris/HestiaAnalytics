@@ -6,6 +6,7 @@ using System.IO;
 using System.Linq;
 using System.Net;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -13,6 +14,11 @@ namespace SighthoundAPI
 {
 	public class SightHoundListener
 	{
+		private const long RedownloadClipPeriod = 5 * 60 * 1000;
+		private const long ClipBufferWindowMS = 10 * 1000;
+
+		private Regex ArchiveFilenameRegex = new Regex( @"(\d+)-(\d+)(?:-(\d+))?" );
+
 		private class Rule
 		{
 			
@@ -34,7 +40,9 @@ namespace SighthoundAPI
 
 		//Camera data
 		private long LastStateGatherTime = 0;
-		private long LastClipGatherTime = 1497313459933; //Should be DateTimeOffset.Now.ToUnixTimeMilliseconds()
+		private long LastClipGatherTime = 1497313459933; //Should be DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+		private long LastClipEndTime = 0;
+		private long LastClipEndTimeNext = 0;
 		private Dictionary<string, Camera> Cameras;
 
 		public delegate void OnCameraStatusChangedDelegate(string Camera, bool OldEnabled, bool NewEnabled, string OldStatus, string NewStatus, bool FirstTime);
@@ -49,14 +57,14 @@ namespace SighthoundAPI
 		public delegate void OnDownloadClipDelegate(Clip Clip);
 		public OnDownloadClipDelegate OnDownloadClip;
 
-		public delegate void OnDownloadedClipDelegate(Clip Clip, string Filename);
+		public delegate void OnDownloadedClipDelegate(Clip Clip, long ClipStart, long ClipSubIndex, string Filename );
 		public OnDownloadedClipDelegate OnDownloadedClip;
 
 		private void ThreadMain()
 		{
 			while( Running )
 			{
-				long CurrentTime = DateTimeOffset.Now.ToUnixTimeMilliseconds();
+				long CurrentTime = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 				if ( CurrentTime - LastStateGatherTime > Settings.UpdateStateIntervalMS )
 				{
 					GatherInitialState();
@@ -65,6 +73,8 @@ namespace SighthoundAPI
 
 				HashSet<int> MergedClipObjects = new HashSet<int>();
 				List<Clip> MergedClips = new List<Clip>();
+
+				LastClipEndTime = LastClipEndTimeNext;
 
 				foreach ( var Camera in Cameras )
 				{
@@ -82,6 +92,18 @@ namespace SighthoundAPI
 
 						while( Clips.Clips.Count > 0 )
 						{
+							//Clip was updated
+							if(Clips.Clips[0].End.UnixTime > LastClipEndTime)
+							{
+
+							}
+							else if (LastClipGatherTime > Clips.Clips[0].End.UnixTime)
+							{
+								//Skip clips we already have
+								Clips.Clips.RemoveAt(0);
+								continue;
+							}
+
 							Clip MergedClip = new Clip();
 							MergedClip.CameraName = Clips.Clips[0].CameraName;
 							MergedClip.FriendlyTime = Clips.Clips[0].FriendlyTime;
@@ -89,7 +111,7 @@ namespace SighthoundAPI
 							MergedClip.Start = Clips.Clips[0].Start;
 							MergedClip.End = Clips.Clips[0].End;
 							MergedClip.ThumbnailTime = Clips.Clips[0].ThumbnailTime;
-							
+
 							int Index = 0;
 							while( Index < Clips.Clips.Count )
 							{
@@ -151,6 +173,7 @@ namespace SighthoundAPI
 								MergedClipObjects.Clear();
 
 								MergedClips.Add( MergedClip );
+								LastClipEndTimeNext = Math.Max(LastClipEndTimeNext, MergedClip.End.UnixTime);
 							}
 						}
 					}
@@ -160,85 +183,158 @@ namespace SighthoundAPI
 				{
 					OnNewClip( Clip );
 				}
-
-				int SkipClips = 2;
-
+				
 				foreach (var Clip in MergedClips)
-				{
-					OnDownloadClip(Clip);
-
-					GetClipUriRequest ClipRequest = new GetClipUriRequest();
-					ClipRequest.CameraName = Clip.CameraName;
-					ClipRequest.ContentType = "video/h264";
-					ClipRequest.Start = Clip.Start;
-					ClipRequest.End = Clip.End;
-					ClipRequest.UriId = ClipId;
-					ClipRequest.Objects = new ObjectIds { ObjectIdArray = Clip.ObjectIds };
-
-					int RetryCount = 5;
-					bool Retry = false;
-
-					if( SkipClips-- > 0 )
+				{				
+					if( Settings.SighthoundArchive != null && Settings.SighthoundArchive.Length > 0 )
 					{
-						ClipId++;
-						continue;
-					}
-
-					do
-					{
-						try
+						int ClipFolder = Clip.Start.Seconds / 100000;
+						int PreviousClipFolder = ClipFolder - 1;
+						
+						string[] ArchiveDirectories = new string[]
 						{
-							SighthoundEndpoint.SetTimeout(3 * 60 * 1000);
-							var ClipPromise = Sighthound.GetClipUri(SighthoundEndpoint, ClipRequest);
-							var ClipUri = ClipPromise.Get();
+							Path.Combine(Settings.SighthoundArchive, Clip.CameraName.ToLower(), ClipFolder.ToString()),
+							Path.Combine(Settings.SighthoundArchive, Clip.CameraName.ToLower(), PreviousClipFolder.ToString())
+						};
+						
+						foreach (var Dir in ArchiveDirectories)
+						{
+							List<string> FilenamesInRange = new List<string>();
 
-							var DownloadPromise = SighthoundEndpoint.CreateGetRequest(ClipUri.Uri, null);
+							try
+							{
+								var DirContent = Directory.EnumerateFiles(Dir, "*.mp4");
+								foreach( var File in DirContent )
+								{
+									var FilenameWithExt = File.Substring(Dir.Length + 1);
+									var FilenameWithoutExt = FilenameWithExt.Substring( 0, FilenameWithExt.LastIndexOf('.') );
+
+									Match FilenameParts = ArchiveFilenameRegex.Match(FilenameWithoutExt);
+									if( FilenameParts.Success )
+									{
+										long Seconds = int.Parse( FilenameParts.Groups[1].Value );
+										long Millseconds = int.Parse( FilenameParts.Groups[2].Value );
+										long FilenameTime = Seconds * 1000 + Millseconds;
+
+										if(		FilenameTime > Clip.Start.UnixTime - ClipBufferWindowMS
+											&&	FilenameTime < Clip.End.UnixTime + ClipBufferWindowMS)
+										{
+											FilenamesInRange.Add(FilenameWithoutExt);
+										}
+									}
+								}
+							}
+							catch( DirectoryNotFoundException )
+							{
+
+							}
 
 							var ClipUnixTime = new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc);
-							ClipUnixTime = ClipUnixTime.AddMilliseconds(ClipUri.Start.UnixTime);
+							var ClipUtcTimeNow = ClipUnixTime = ClipUnixTime.AddMilliseconds(Clip.Start.UnixTime);
+							ClipUnixTime = ClipUnixTime.ToLocalTime();
 
 							string TargetDirectory = Path.Combine(Settings.ClipCache, ClipUnixTime.ToString("yyyy_MM_dd"));
 
 							string ClipFriendlyTime = ClipUnixTime.ToString("HH_mm_ss");
 
-							Directory.CreateDirectory(TargetDirectory);
-
-							string Filename = Path.Combine(TargetDirectory, $"{ClipId}_{ClipFriendlyTime}.mp4");
-
-							DownloadPromise.WriteToFile(Filename);
-
-							OnDownloadedClip(Clip, Filename);
-
-							Retry = false;
-
-							ClipId++;
-						}
-						catch (AggregateException ExOuter)
-						{
-							WebException Ex = ExOuter.InnerException as WebException;
-
-							if( Ex != null )
+							int SubClipIndex = 0;
+							foreach (var Filename in FilenamesInRange)
 							{
-								if ( ((HttpWebResponse)(Ex.Response)).StatusCode == HttpStatusCode.GatewayTimeout )
+								Directory.CreateDirectory(TargetDirectory);
+
+								string TargetFilename = Path.Combine(TargetDirectory, $"{ClipFriendlyTime}_{SubClipIndex.ToString("D2")}.mp4");
+								
+								try
 								{
-									Retry = true;
-									System.Console.Error.WriteLine($"Failed, {RetryCount} retries left.");
+									File.Copy(Path.Combine( Dir, $"{Filename}.mp4"), TargetFilename);
+
+									OnDownloadedClip(Clip, Clip.Start.UnixTime, SubClipIndex, TargetFilename );
+								}
+								catch (IOException Ex)
+								{
+									if( !Ex.Message.Contains("already exists") )
+									{
+										throw Ex;
+									}
+								}
+
+								SubClipIndex++;
+							}
+						}
+
+						ClipId++;
+					}
+					else
+					{
+						OnDownloadClip(Clip);
+
+						GetClipUriRequest ClipRequest = new GetClipUriRequest();
+						ClipRequest.CameraName = Clip.CameraName;
+						ClipRequest.ContentType = "video/h264";
+						ClipRequest.Start = Clip.Start;
+						ClipRequest.End = Clip.End;
+						ClipRequest.UriId = ClipId;
+						ClipRequest.Objects = new ObjectIds { ObjectIdArray = Clip.ObjectIds };
+
+						int RetryCount = 5;
+						bool Retry = false;
+						do
+						{
+							try
+							{
+								SighthoundEndpoint.SetTimeout(3 * 60 * 1000);
+								var ClipPromise = Sighthound.GetClipUri(SighthoundEndpoint, ClipRequest);
+								var ClipUri = ClipPromise.Get();
+
+								var DownloadPromise = SighthoundEndpoint.CreateGetRequest(ClipUri.Uri, null);
+
+								var ClipUnixTime = new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+								ClipUnixTime = ClipUnixTime.AddMilliseconds(ClipUri.Start.UnixTime);
+								ClipUnixTime = ClipUnixTime.ToLocalTime();
+
+								string TargetDirectory = Path.Combine(Settings.ClipCache, ClipUnixTime.ToString("yyyy_MM_dd"));
+
+								string ClipFriendlyTime = ClipUnixTime.ToString("HH_mm_ss");
+
+								Directory.CreateDirectory(TargetDirectory);
+
+								string Filename = Path.Combine(TargetDirectory, $"{ClipFriendlyTime}.mp4");
+
+								DownloadPromise.WriteToFile(Filename);
+
+								OnDownloadedClip(Clip, Clip.Start.UnixTime, 0, Filename );
+
+								Retry = false;
+
+								ClipId++;
+							}
+							catch (AggregateException ExOuter)
+							{
+								WebException Ex = ExOuter.InnerException as WebException;
+
+								if( Ex != null )
+								{
+									if ( ((HttpWebResponse)(Ex.Response)).StatusCode == HttpStatusCode.GatewayTimeout )
+									{
+										Retry = true;
+										System.Console.Error.WriteLine($"Failed, {RetryCount} retries left.");
+									}
+									else
+									{
+										throw ExOuter;
+									}
 								}
 								else
 								{
 									throw ExOuter;
 								}
 							}
-							else
+							finally
 							{
-								throw ExOuter;
+								SighthoundEndpoint.ResetTimeoutToDefault();
 							}
-						}
-						finally
-						{
-							SighthoundEndpoint.ResetTimeoutToDefault();
-						}
-					} while (Retry && RetryCount-- > 0);
+						} while (Retry && RetryCount-- > 0);
+					}
 				}
 
 				LastClipGatherTime = CurrentTime;
@@ -259,8 +355,17 @@ namespace SighthoundAPI
 
 		public void Start()
 		{
-			WorkerThread = new Thread( new ThreadStart( ThreadMain ) );
-			WorkerThread.Start();
+			var PingPromise = Sighthound.Ping(SighthoundEndpoint);
+			var Ping = PingPromise.Get();
+			if( Ping.Id.Length > 0 )
+			{
+				WorkerThread = new Thread(new ThreadStart(ThreadMain));
+				WorkerThread.Start();
+			}
+			else
+			{
+				throw new Exception( $"Unable to ping server {Settings.Hostname}." );
+			}
 		}
 
 		public void Stop()
@@ -278,7 +383,7 @@ namespace SighthoundAPI
 		{
 			Dictionary<string, Camera> OldCameras = Cameras;
 
-			LastStateGatherTime = DateTimeOffset.Now.ToUnixTimeMilliseconds();
+			LastStateGatherTime = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 
 			//Update camera list
 			{
@@ -360,109 +465,5 @@ namespace SighthoundAPI
 				}
 			}
 		}
-
-		/*
-		
-	var Endpoint = 
-
-			List<string> CameraNames;
-
-			{
-				var ResponsePromise = Sighthound.GetCameraNames(Endpoint);
-				var Response = ResponsePromise.Get();
-				CameraNames = Response.CameraNames;
-			}
-
-			{
-				var ResponsePromise = Sighthound.GetRulesForCamera(Endpoint, "Front Door" );
-				var Response = ResponsePromise.Get();
-			}
-
-			{
-				var ResponsePromise = Sighthound.EnableRule(Endpoint, "People in Front Door", true);
-				var Response = ResponsePromise.Get();
-			}
-
-			{
-				var ResponsePromise = Sighthound.EnableCamera(Endpoint, "Front Door", true);
-				var Response = ResponsePromise.Get();
-			}
-
-			{
-				var ResponsePromise = Sighthound.GetLiveCameras(Endpoint);
-				var Response = ResponsePromise.Get();
-			}
-
-			{
-				var ResponsePromise = Sighthound.GetLiveCameraUri(Endpoint, "Front Door", VideoType.Jpeg );
-				var Response = ResponsePromise.Get();
-			}
-
-			{
-				var ResponsePromise = Sighthound.GetRuleInfo(Endpoint, "Unknown objects outside Bush in Front Door");
-				var Response = ResponsePromise.Get();
-			}
-
-			{
-				var Request = new GetClipsForRuleRequest();
-				Request.CameraName = "Front Door";
-				Request.RuleName = "Unknown objects outside Bush in Front Door";
-				Request.From = 1497722643.242;
-				Request.Count = 25;
-				Request.Page = 0;
-				Request.OldestFirst = false;
-
-				var ResponsePromise = Sighthound.GetClipsForRule(Endpoint, Request);
-				var Response = ResponsePromise.Get();
-
-				{
-					List<ThumbnailClipRequest> Clips = new List<ThumbnailClipRequest>();
-					
-					foreach( var Clip in Response.Clips )
-					{
-						ThumbnailClipRequest NewClip = new ThumbnailClipRequest();
-						NewClip.CameraName = Clip.CameraName;
-						NewClip.ThumbnailTime = Clip.ThumbnailTime;
-						Clips.Add(NewClip);
-					}
-
-					var ResponsePromiseq = Sighthound.GetClipThumbnails(Endpoint, Clips, 320, 240 );
-					var Responseq = ResponsePromiseq.Get();
-				}
-			}
-
-			{
-				foreach(var Cam in CameraNames)
-				{
-					var ResponsePromise = Sighthound.GetCameraStatus(Endpoint, Cam);
-					var Response = ResponsePromise.Get();
-				}
-			}
-
-			{
-				foreach (var Cam in CameraNames)
-				{
-					var ResponsePromise = Sighthound.GetCameraStatus(Endpoint, Cam);
-					var Response = ResponsePromise.Get();
-				}
-			}
-
-			{
-				GetClipUriRequest Request = new GetClipUriRequest();
-				Request.CameraName = "Front Door";
-				Request.Start.Seconds = 1497364274;
-				Request.Start.Milliseconds = 51;
-				Request.End.Seconds = 1497364509;
-				Request.End.Milliseconds = 0;
-				Request.UriId = 804;
-				Request.ContentType = "video/h264";
-				Request.Objects.ObjectIdArray = new List < int > { 8456, 8455 };
-
-				var ResponsePromise = Sighthound.GetClipUri( Endpoint, Request );
-				var Response = ResponsePromise.Get();
-			}
-
-	*/
-
 	}
 }

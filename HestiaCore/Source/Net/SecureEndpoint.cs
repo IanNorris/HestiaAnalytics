@@ -19,6 +19,7 @@ namespace HestiaCore
 			this.Headers = new NameValueCollection();
 			this.Timeout = 0;
 			this.Secure = Secure;
+			this.KeepAlive = true;
 		}
 		
 		public void AddHeader( string Key, string Value )
@@ -42,6 +43,11 @@ namespace HestiaCore
 			AddHeader("Authorization", "Basic " + EncodedAuth);
 		}
 
+		public void DisableKeepAlive()
+		{
+			KeepAlive = false;
+		}
+
 		private HttpWebRequest PrepareRequest( string URI, NameValueCollection QueryString )
 		{
 			UriBuilder Uri = new UriBuilder( Secure ? "https" : "http", Hostname, (int)Port, URI);
@@ -60,8 +66,9 @@ namespace HestiaCore
 			HttpWebRequest WebRequest = HttpWebRequest.CreateHttp(Uri.Uri);
 			WebRequest.ServerCertificateValidationCallback = CheckCertificateThumbprints;
 			WebRequest.Headers.Add(Headers);
-
-			if( Timeout > 0 )
+			WebRequest.KeepAlive = KeepAlive;
+			
+			if ( Timeout > 0 )
 			{
 				WebRequest.Timeout = Timeout;
 			}
@@ -132,5 +139,6 @@ namespace HestiaCore
 		private uint Port;
 		private int Timeout;
 		private bool Secure;
+		private bool KeepAlive;
 	}
 }

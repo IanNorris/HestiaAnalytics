@@ -42,6 +42,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="AnalyzeImageQuery.cs" />
+    <Compile Include="FrameExtractor.cs" />
     <Compile Include="GenerateThumbnailQuery.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>

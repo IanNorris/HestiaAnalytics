@@ -1,5 +1,7 @@
-﻿using HestiaCore;
+﻿using HestiaAnalyticsVision;
+using HestiaCore;
 using SighthoundAPI;
+using System;
 using System.Collections.Generic;
 
 namespace HestiaAnalyticsServer
@@ -8,13 +10,16 @@ namespace HestiaAnalyticsServer
 	{
 		static Settings Settings;
 		static SightHoundListener SightHoundListener;
+		static FrameExtractor FrameExtractor;
 
 		static void Main(string[] args)
 		{
 			Settings = Settings.LoadSettings("HestiaAnalytics");
 
 			SightHoundListener = new SightHoundListener(Settings.SighthoundAPI);
-			
+			FrameExtractor = new FrameExtractor();
+
+
 			SightHoundListener.OnCameraStatusChanged += (name, oldEnabled, enabled, oldStatus, status, firstTime) =>
 			{
 				string OldEnabledString = oldEnabled ? "enabled" : "disabled";
@@ -31,7 +36,11 @@ namespace HestiaAnalyticsServer
 
 			SightHoundListener.OnNewClip += (Clip clip) =>
 			{
-				System.Console.Out.WriteLine($"Camera \"{clip.CameraName}\" had activity at {clip.FriendlyTime} for {Timestamp.GetFriendlyDelta(clip.Start, clip.End)}.");
+				var ClipUnixTime = new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+				ClipUnixTime = ClipUnixTime.AddMilliseconds(clip.Start.UnixTime);
+				ClipUnixTime = ClipUnixTime.ToLocalTime();
+
+				System.Console.Out.WriteLine($"Camera \"{clip.CameraName}\" had activity at {ClipUnixTime.ToString("t")} for {Timestamp.GetFriendlyDelta(clip.Start, clip.End)}.");
 			};
 
 			SightHoundListener.OnDownloadClip += (Clip clip) =>
@@ -39,7 +48,7 @@ namespace HestiaAnalyticsServer
 				System.Console.Out.WriteLine($"Downloading clip from camera \"{clip.CameraName}\" at {clip.FriendlyTime}...");
 			};
 
-			SightHoundListener.OnDownloadedClip += (Clip clip, string Filename) =>
+			SightHoundListener.OnDownloadedClip += (Clip clip, long ClipStart, long ClipSubIndex, string Filename) =>
 			{
 				System.Console.Out.WriteLine($"Downloaded clip from camera \"{clip.CameraName}\" at {clip.FriendlyTime} to {Filename}.");
 			};

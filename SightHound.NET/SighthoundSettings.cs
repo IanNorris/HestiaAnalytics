@@ -12,6 +12,7 @@ namespace SighthoundAPI
 		public uint Port;
 		public string EndpointUri;
 		public bool Secure;
+		public string SighthoundArchive;
 		public string Username;
 		public string Password;
 		public string CertificateAuthorityThumbprint;
