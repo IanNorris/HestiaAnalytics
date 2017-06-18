@@ -29,6 +29,21 @@ namespace HestiaAnalyticsServer
 				}
 			};
 
+			SightHoundListener.OnNewClip += (Clip clip) =>
+			{
+				System.Console.Out.WriteLine($"Camera \"{clip.CameraName}\" had activity at {clip.FriendlyTime} for {Timestamp.GetFriendlyDelta(clip.Start, clip.End)}.");
+			};
+
+			SightHoundListener.OnDownloadClip += (Clip clip) =>
+			{
+				System.Console.Out.WriteLine($"Downloading clip from camera \"{clip.CameraName}\" at {clip.FriendlyTime}...");
+			};
+
+			SightHoundListener.OnDownloadedClip += (Clip clip, string Filename) =>
+			{
+				System.Console.Out.WriteLine($"Downloaded clip from camera \"{clip.CameraName}\" at {clip.FriendlyTime} to {Filename}.");
+			};
+
 			SightHoundListener.Start();
 
 			SightHoundListener.Wait();

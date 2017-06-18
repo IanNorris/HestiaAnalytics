@@ -28,6 +28,55 @@ namespace SighthoundAPI
 	{
 		public int Seconds;
 		public int Milliseconds;
+		
+		public Timestamp( int Seconds, int Milliseconds )
+		{
+			this.Seconds = Seconds;
+			this.Milliseconds = Milliseconds;
+		}
+
+		public Timestamp( long UnixTimeIn )
+		{
+			Seconds = (int)(UnixTimeIn / 1000);
+			Milliseconds = (int)(UnixTimeIn - (Seconds*1000));
+		}
+
+		public long UnixTime { get { return ((long)Seconds * 1000) + (long)Milliseconds; } }
+
+		public static string GetFriendlyDelta( Timestamp Start, Timestamp End )
+		{
+			double Delta = (double)(End.UnixTime - Start.UnixTime);
+
+			if( Delta < 1000.0 )
+			{
+				return $"{(int)Delta}ms";
+			}
+
+			Delta /= 1000.0;
+
+			if( Math.Round( Delta ) < 60.0 )
+			{
+				return $"{(int)Math.Round(Delta)} second(s)";
+			}
+
+			Delta /= 60.0;
+
+			if (Math.Round(Delta) < 60.0)
+			{
+				return $"{(int)Math.Round(Delta)} minute(s)";
+			}
+
+			Delta /= 60.0;
+
+			if (Math.Round(Delta) < 24.0)
+			{
+				return $"{(int)Math.Round(Delta)} hour(s)";
+			}
+
+			Delta /= 24.0;
+
+			return $"{(int)Math.Round(Delta)} days(s)";
+		}
 	}
 
 	[IsRemoteStructAttribute]

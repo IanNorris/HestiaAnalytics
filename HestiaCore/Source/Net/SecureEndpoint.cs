@@ -11,17 +11,29 @@ namespace HestiaCore
 {
 	public class SecureEndpoint
     {
-		public SecureEndpoint( string Hostname, string CertificateAuthorityThumbprint, uint Port = 443 )
+		public SecureEndpoint( string Hostname, string CertificateAuthorityThumbprint, uint Port = 443, bool Secure = true )
 		{
 			this.Hostname = Hostname;
 			this.Port = Port;
 			this.CertificateAuthorityThumbprint = CertificateAuthorityThumbprint.Replace( " ", "" );
 			this.Headers = new NameValueCollection();
+			this.Timeout = 0;
+			this.Secure = Secure;
 		}
 		
 		public void AddHeader( string Key, string Value )
 		{
 			Headers.Add( Key, Value );
+		}
+
+		public void SetTimeout( int Timeout )
+		{
+			this.Timeout = Timeout;
+		}
+
+		public void ResetTimeoutToDefault()
+		{
+			this.Timeout = 0;
 		}
 
 		public void AddBasicAuthenticationHeader( string Username, string Password )
@@ -32,7 +44,7 @@ namespace HestiaCore
 
 		private HttpWebRequest PrepareRequest( string URI, NameValueCollection QueryString )
 		{
-			UriBuilder Uri = new UriBuilder("https", Hostname, (int)Port, URI);
+			UriBuilder Uri = new UriBuilder( Secure ? "https" : "http", Hostname, (int)Port, URI);
 
 			if (QueryString != null)
 			{
@@ -48,6 +60,11 @@ namespace HestiaCore
 			HttpWebRequest WebRequest = HttpWebRequest.CreateHttp(Uri.Uri);
 			WebRequest.ServerCertificateValidationCallback = CheckCertificateThumbprints;
 			WebRequest.Headers.Add(Headers);
+
+			if( Timeout > 0 )
+			{
+				WebRequest.Timeout = Timeout;
+			}
 
 			return WebRequest;
 		}
@@ -113,5 +130,7 @@ namespace HestiaCore
 		private string CertificateAuthorityThumbprint;
 		private NameValueCollection Headers;
 		private uint Port;
+		private int Timeout;
+		private bool Secure;
 	}
 }

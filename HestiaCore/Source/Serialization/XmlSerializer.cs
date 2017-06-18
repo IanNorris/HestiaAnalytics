@@ -178,6 +178,17 @@ namespace HestiaCore.Source.Serialization
 			{
 				if( DataIndex >= Data.Count )
 				{
+					if(		Data.Count == 2 
+						&&	(Data[0].GetType() == typeof(bool)) 
+						&&	(Data[1].GetType() == typeof(string)))
+					{
+						bool? Success = (bool)Data[0];
+						if( ((string)Data[1]).Contains("exception") )
+						{
+							throw new Exception( (string)Data[1] );
+						}
+					}
+
 					throw new Exception($"Not enough data available to fille {Type.Name}. There are {Fields.Length} but only {Data.Count} were provided.");
 				}
 

@@ -8,6 +8,8 @@ namespace SighthoundAPI
 {
 	public class SighthoundRPC
 	{
+		public static string EndpointUri = "/xmlrpc/";
+
 		public static SecureXMLRPCResponse<T> SendRPCCommand<T>( SecureEndpoint Endpoint, string Method, Object Data )
 		{
 			StringBuilder SB = new StringBuilder();
@@ -37,7 +39,7 @@ namespace SighthoundAPI
 
 			string StringOut = SB.ToString();
 
-			return Endpoint.CreatePostXMLRPC<T>( "/xmlrpc/", null, StringOut );
+			return Endpoint.CreatePostXMLRPC<T>(EndpointUri, null, StringOut );
 		}
 	}
 }

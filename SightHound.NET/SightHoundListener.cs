@@ -2,7 +2,9 @@
 using SighthoundAPI;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Net;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -28,9 +30,11 @@ namespace SighthoundAPI
 		private Thread WorkerThread;
 		private bool Running = true;
 
+		private int ClipId = 0;
+
 		//Camera data
-		private long TimeOfLastStateGather = 0;
-		private long TimeOfLastClipGather = 0;
+		private long LastStateGatherTime = 0;
+		private long LastClipGatherTime = 1497313459933; //Should be DateTimeOffset.Now.ToUnixTimeMilliseconds()
 		private Dictionary<string, Camera> Cameras;
 
 		public delegate void OnCameraStatusChangedDelegate(string Camera, bool OldEnabled, bool NewEnabled, string OldStatus, string NewStatus, bool FirstTime);
@@ -39,15 +43,205 @@ namespace SighthoundAPI
 		public delegate void OnCameraRuleChangedDelegate(string Camera, string Rule, bool OldEnabled, bool NewEnabled, bool FirstTIme);
 		public OnCameraRuleChangedDelegate OnCameraRuleChanged;
 
+		public delegate void OnNewClipDelegate( Clip Clip );
+		public OnNewClipDelegate OnNewClip;
+
+		public delegate void OnDownloadClipDelegate(Clip Clip);
+		public OnDownloadClipDelegate OnDownloadClip;
+
+		public delegate void OnDownloadedClipDelegate(Clip Clip, string Filename);
+		public OnDownloadedClipDelegate OnDownloadedClip;
+
 		private void ThreadMain()
 		{
 			while( Running )
 			{
 				long CurrentTime = DateTimeOffset.Now.ToUnixTimeMilliseconds();
-				if ( CurrentTime - TimeOfLastStateGather > Settings.UpdateStateIntervalMS )
+				if ( CurrentTime - LastStateGatherTime > Settings.UpdateStateIntervalMS )
 				{
 					GatherInitialState();
+					LastStateGatherTime = CurrentTime;
 				}
+
+				HashSet<int> MergedClipObjects = new HashSet<int>();
+				List<Clip> MergedClips = new List<Clip>();
+
+				foreach ( var Camera in Cameras )
+				{
+					foreach( var Rule in Camera.Value.Rules )
+					{
+						GetClipsForRuleRequest ClipRequest = new GetClipsForRuleRequest();
+						ClipRequest.CameraName = Camera.Key;
+						ClipRequest.Count = 1000;
+						ClipRequest.From = (double)LastClipGatherTime / 1000.0f;
+						ClipRequest.OldestFirst = true;
+						ClipRequest.Page = 0;
+						ClipRequest.RuleName = Rule.Key;
+						var ClipPromise = Sighthound.GetClipsForRule(SighthoundEndpoint, ClipRequest);
+						var Clips = ClipPromise.Get();
+
+						while( Clips.Clips.Count > 0 )
+						{
+							Clip MergedClip = new Clip();
+							MergedClip.CameraName = Clips.Clips[0].CameraName;
+							MergedClip.FriendlyTime = Clips.Clips[0].FriendlyTime;
+							MergedClip.ObjectIds = Clips.Clips[0].ObjectIds;
+							MergedClip.Start = Clips.Clips[0].Start;
+							MergedClip.End = Clips.Clips[0].End;
+							MergedClip.ThumbnailTime = Clips.Clips[0].ThumbnailTime;
+							
+							int Index = 0;
+							while( Index < Clips.Clips.Count )
+							{
+								if(Clips.Clips[Index].End.UnixTime - MergedClip.End.UnixTime <= Settings.ClipStichingGapMS )
+								{
+									foreach( var Id in Clips.Clips[Index].ObjectIds )
+									{
+										MergedClipObjects.Add(Id);
+									}
+
+									MergedClip.End = Clips.Clips[Index].End;
+									Clips.Clips.RemoveAt(Index);
+								}
+								else
+								{
+									Index++;
+								}
+							}
+
+							bool Found = false;
+							foreach( var ExistingClip in MergedClips )
+							{
+								if( ExistingClip.CameraName != MergedClip.CameraName )
+								{
+									continue;
+								}
+
+								if( Math.Max(MergedClip.Start.UnixTime, ExistingClip.Start.UnixTime) - Math.Min(MergedClip.Start.UnixTime, ExistingClip.Start.UnixTime) > Settings.ClipStichingGapMS )
+								{
+									continue;
+								}
+
+								if( Math.Max( MergedClip.End.UnixTime, ExistingClip.End.UnixTime ) - Math.Min( MergedClip.End.UnixTime, ExistingClip.End.UnixTime ) > Settings.ClipStichingGapMS )
+								{
+									continue;
+								}
+
+								//Object is within the range
+
+								// Merge the merged clip ids into the existing clip
+								foreach( var Id in ExistingClip.ObjectIds )
+								{
+									MergedClipObjects.Add(Id);
+								}
+								ExistingClip.ObjectIds.Clear();
+								ExistingClip.ObjectIds.AddRange(MergedClipObjects);
+
+								ExistingClip.Start = new Timestamp(Math.Min(MergedClip.Start.UnixTime, ExistingClip.Start.UnixTime));
+								ExistingClip.End = new Timestamp(Math.Max(MergedClip.End.UnixTime, ExistingClip.End.UnixTime));
+
+								Found = true;
+								break;
+							}
+
+							if( !Found )
+							{
+								MergedClip.ObjectIds.Clear();
+								MergedClip.ObjectIds.AddRange(MergedClipObjects);
+								MergedClipObjects.Clear();
+
+								MergedClips.Add( MergedClip );
+							}
+						}
+					}
+				}
+				
+				foreach( var Clip in MergedClips )
+				{
+					OnNewClip( Clip );
+				}
+
+				int SkipClips = 2;
+
+				foreach (var Clip in MergedClips)
+				{
+					OnDownloadClip(Clip);
+
+					GetClipUriRequest ClipRequest = new GetClipUriRequest();
+					ClipRequest.CameraName = Clip.CameraName;
+					ClipRequest.ContentType = "video/h264";
+					ClipRequest.Start = Clip.Start;
+					ClipRequest.End = Clip.End;
+					ClipRequest.UriId = ClipId;
+					ClipRequest.Objects = new ObjectIds { ObjectIdArray = Clip.ObjectIds };
+
+					int RetryCount = 5;
+					bool Retry = false;
+
+					if( SkipClips-- > 0 )
+					{
+						ClipId++;
+						continue;
+					}
+
+					do
+					{
+						try
+						{
+							SighthoundEndpoint.SetTimeout(3 * 60 * 1000);
+							var ClipPromise = Sighthound.GetClipUri(SighthoundEndpoint, ClipRequest);
+							var ClipUri = ClipPromise.Get();
+
+							var DownloadPromise = SighthoundEndpoint.CreateGetRequest(ClipUri.Uri, null);
+
+							var ClipUnixTime = new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+							ClipUnixTime = ClipUnixTime.AddMilliseconds(ClipUri.Start.UnixTime);
+
+							string TargetDirectory = Path.Combine(Settings.ClipCache, ClipUnixTime.ToString("yyyy_MM_dd"));
+
+							string ClipFriendlyTime = ClipUnixTime.ToString("HH_mm_ss");
+
+							Directory.CreateDirectory(TargetDirectory);
+
+							string Filename = Path.Combine(TargetDirectory, $"{ClipId}_{ClipFriendlyTime}.mp4");
+
+							DownloadPromise.WriteToFile(Filename);
+
+							OnDownloadedClip(Clip, Filename);
+
+							Retry = false;
+
+							ClipId++;
+						}
+						catch (AggregateException ExOuter)
+						{
+							WebException Ex = ExOuter.InnerException as WebException;
+
+							if( Ex != null )
+							{
+								if ( ((HttpWebResponse)(Ex.Response)).StatusCode == HttpStatusCode.GatewayTimeout )
+								{
+									Retry = true;
+									System.Console.Error.WriteLine($"Failed, {RetryCount} retries left.");
+								}
+								else
+								{
+									throw ExOuter;
+								}
+							}
+							else
+							{
+								throw ExOuter;
+							}
+						}
+						finally
+						{
+							SighthoundEndpoint.ResetTimeoutToDefault();
+						}
+					} while (Retry && RetryCount-- > 0);
+				}
+
+				LastClipGatherTime = CurrentTime;
 
 				Thread.Sleep( Settings.UpdateIntervalMS );
 			}
@@ -57,7 +251,9 @@ namespace SighthoundAPI
 		{
 			this.Settings = Settings;
 
-			SighthoundEndpoint = new SecureEndpoint(Settings.Hostname, Settings.CertificateAuthorityThumbprint, Settings.Port);
+			SighthoundRPC.EndpointUri = Settings.EndpointUri;
+
+			SighthoundEndpoint = new SecureEndpoint(Settings.Hostname, Settings.CertificateAuthorityThumbprint, Settings.Port, Settings.Secure);
 			SighthoundEndpoint.AddBasicAuthenticationHeader(Settings.Username, Settings.Password);
 		}
 
@@ -82,7 +278,7 @@ namespace SighthoundAPI
 		{
 			Dictionary<string, Camera> OldCameras = Cameras;
 
-			TimeOfLastStateGather = DateTimeOffset.Now.ToUnixTimeMilliseconds();
+			LastStateGatherTime = DateTimeOffset.Now.ToUnixTimeMilliseconds();
 
 			//Update camera list
 			{
