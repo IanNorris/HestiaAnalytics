@@ -15,13 +15,13 @@ namespace HestiaAnalyticsVision
     {
 		public enum VisualFeatures
 		{
-			Categories,
-			Tags,
-			Description,
-			Faces,
-			ImageType,
-			Color,
-			Adult
+			Categories,     //Price tier 1? (unconfirmed)
+			Tags,           //Price tier 1
+			Description,	//Price tier 3
+			Faces,			//Price tier 1
+			ImageType,      //Price tier 1
+			Color,          //Price tier 1
+			Adult           //Price tier 2
 		}
 
 		public enum Details

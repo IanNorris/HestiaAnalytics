@@ -1,4 +1,5 @@
-﻿using Newtonsoft.Json;
+﻿using HestiaAnalyticsVision;
+using Newtonsoft.Json;
 using SighthoundAPI;
 using System;
 using System.Collections.Generic;
@@ -20,6 +21,8 @@ namespace HestiaAnalyticsServer
 	{
 		public AzureCognitiveAPISettings AzureCognitiveAPI;
 		public SighthoundSettings SighthoundAPI;
+		public AnalyzeImageFilterSettings Filter;
+		public MotionAnalysisSettings MotionAnalysis;
 
 		public static Settings LoadSettings( string AppName )
 		{

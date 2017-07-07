@@ -1,8 +1,13 @@
 ﻿using HestiaAnalyticsVision;
 using HestiaCore;
+using Newtonsoft.Json;
 using SighthoundAPI;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Drawing;
+using System.Drawing.Imaging;
+using System.IO;
 
 namespace HestiaAnalyticsServer
 {
@@ -10,16 +15,129 @@ namespace HestiaAnalyticsServer
 	{
 		static Settings Settings;
 		static SightHoundListener SightHoundListener;
-		static FrameExtractor FrameExtractor;
+		static FrameExtractor FrameProcessor;
+
+		static int Index = 0;
 
 		static void Main(string[] args)
 		{
 			Settings = Settings.LoadSettings("HestiaAnalytics");
 
+			FrameProcessor = new FrameExtractor(Settings.MotionAnalysis);
+
+			var CognitiveEndpoint = new SecureEndpoint(
+					Settings.AzureCognitiveAPI.RegionName + ".api.cognitive.microsoft.com",
+					Settings.AzureCognitiveAPI.CertificateAuthorityThumbprint
+				);
+			CognitiveEndpoint.AddHeader("Ocp-Apim-Subscription-Key", Settings.AzureCognitiveAPI.SubscriptionKey);
+
+			List<string> InputFiles = new List<string>();
+			foreach( var Filename in Directory.EnumerateFiles(@"W:\VideoOut", "*.json") )
+			{
+				InputFiles.Add(File.ReadAllText(Filename));
+			}
+			
+			var ResultOutput = MergeClipJsonResults.MergeAndFilter( InputFiles, Settings.Filter );
+
+			/*using (var TextWriter = new StringWriter())
+			using (var Writer = new Newtonsoft.Json.JsonTextWriter(TextWriter))
+			{
+				var Serializer = Newtonsoft.Json.JsonSerializer.Create();
+
+				Serializer.Serialize(Writer, ResultOutput);
+				System.Console.WriteLine(TextWriter.GetStringBuilder().ToString());
+			}
+
+			string ResultString = JsonConvert.SerializeObject(ResultOutput, Formatting.Indented);
+			System.Console.WriteLine(ResultString);
+
+			return;*/
+			
+			List<string> ClipResults = new List<string>();
+
+			FrameProcessor.OnClipStart += (string Filename) =>
+			{
+				ClipResults.Clear();
+			};
+
+			FrameProcessor.OnClipEnd += (string Filename) =>
+			{
+				var Result = MergeClipJsonResults.MergeAndFilter(ClipResults, Settings.Filter);
+
+				string ResultString = JsonConvert.SerializeObject(Result, Formatting.Indented);
+				System.Console.WriteLine(ResultString);
+			};
+
+			FrameProcessor.OnMotionDetectedFrame += (Bitmap frame, Rectangle rect, float frameTimestamp) =>
+			{
+				using (MemoryStream MS = new MemoryStream())
+				{
+					using (Bitmap NewBitmap = frame.Clone(rect, frame.PixelFormat))
+					{
+
+						NewBitmap.Save(MS, ImageFormat.Jpeg);
+
+						NewBitmap.Save($"W:\\VideoOut\\Result_{Index++}.jpg");
+
+						var X = HestiaAnalyticsVision.AnalyzeImageQuery.CreateFromBytes(
+							CognitiveEndpoint,
+							new AnalyzeImageQuery.VisualFeatures[]
+							{
+							AnalyzeImageQuery.VisualFeatures.Tags,
+							AnalyzeImageQuery.VisualFeatures.Faces
+							},
+							new AnalyzeImageQuery.Details[] { },
+							MS.ToArray()
+						);
+
+						string AnalysisResult = X.GetAsString();
+						ClipResults.Add(AnalysisResult);
+
+						File.WriteAllText($"W:\\VideoOut\\Result_{Index++}.json", AnalysisResult);
+					}
+				}
+			};
+
+			/*Stopwatch timer = new Stopwatch();
+			timer.Start();
+
+			FrameExtractor FE = new FrameExtractor(@"W:\SighthoundClips\2017_06_13\07_18_54_00.mp4");
+
+			var Endpoint = new SecureEndpoint(
+				Settings.AzureCognitiveAPI.RegionName + ".api.cognitive.microsoft.com",
+				Settings.AzureCognitiveAPI.CertificateAuthorityThumbprint
+			);
+			Endpoint.AddHeader("Ocp-Apim-Subscription-Key", Settings.AzureCognitiveAPI.SubscriptionKey);
+
+			int Index = 0;
+			foreach (Bitmap bmp in FE.ObjectFrames)
+			{
+				using (MemoryStream MS = new MemoryStream())
+				{
+					bmp.Save(MS, ImageFormat.Jpeg);
+
+
+					var X = HestiaAnalyticsVision.AnalyzeImageQuery.CreateFromBytes(
+						Endpoint,
+						new AnalyzeImageQuery.VisualFeatures[]
+						{
+							AnalyzeImageQuery.VisualFeatures.Tags,
+							AnalyzeImageQuery.VisualFeatures.Faces
+						},
+						new AnalyzeImageQuery.Details[] { },
+						MS.ToArray()
+					);
+
+					X.WriteToFile($"W:\\VideoOut\\Result_{Index++}.json");
+				}
+			}
+
+			timer.Stop();
+
+			return;*/
+
 			SightHoundListener = new SightHoundListener(Settings.SighthoundAPI);
-			FrameExtractor = new FrameExtractor();
-
-
+			
 			SightHoundListener.OnCameraStatusChanged += (name, oldEnabled, enabled, oldStatus, status, firstTime) =>
 			{
 				string OldEnabledString = oldEnabled ? "enabled" : "disabled";
@@ -47,10 +165,14 @@ namespace HestiaAnalyticsServer
 			{
 				System.Console.Out.WriteLine($"Downloading clip from camera \"{clip.CameraName}\" at {clip.FriendlyTime}...");
 			};
-
+			
 			SightHoundListener.OnDownloadedClip += (Clip clip, long ClipStart, long ClipSubIndex, string Filename) =>
 			{
 				System.Console.Out.WriteLine($"Downloaded clip from camera \"{clip.CameraName}\" at {clip.FriendlyTime} to {Filename}.");
+
+
+
+				FrameProcessor.Run( Filename );
 			};
 
 			SightHoundListener.Start();

@@ -40,7 +40,8 @@ namespace SighthoundAPI
 
 		//Camera data
 		private long LastStateGatherTime = 0;
-		private long LastClipGatherTime = 1497313459933; //Should be DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+		//private long LastClipGatherTime = //1497313459933; //Should be DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+		private long LastClipGatherTime = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 		private long LastClipEndTime = 0;
 		private long LastClipEndTimeNext = 0;
 		private Dictionary<string, Camera> Cameras;

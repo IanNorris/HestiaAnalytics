@@ -37,7 +37,7 @@ namespace HestiaCore
 			{
 				Response.Result.GetResponseStream().CopyTo( MemStream );
 
-				File.WriteAllBytes(Filename, MemStream.GetBuffer());
+				File.WriteAllBytes(Filename, MemStream.ToArray());
 			}
 		}
 
