@@ -115,6 +115,7 @@
     <Compile Include="GenerateThumbnailQuery.cs" />
     <Compile Include="MergeClipJsonResults.cs" />
     <Compile Include="MotionAnalysisSettings.cs" />
+    <Compile Include="MultiStageImageClassificationQuery.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>

@@ -88,7 +88,7 @@ namespace HestiaAnalyticsVision
 			return ShouldIgnore;
 		}
 
-		public static AnalysisResult MergeAndFilter( List<string> Frames, AnalyzeImageFilterSettings Filter )
+		public static AnalysisResult MergeAndFilter(List<AnalysisResult> Frames, AnalyzeImageFilterSettings Filter)
 		{
 			AnalysisResult MergedResult = new AnalysisResult();
 			// RequestId, Metadata, ImageType, Color will be null
@@ -99,54 +99,33 @@ namespace HestiaAnalyticsVision
 			List<string> NewDescTags = new List<string>();
 			List<Caption> NewCaptions = new List<Caption>();
 
-			foreach ( string Frame in Frames )
+			foreach (var FrameData in Frames)
 			{
-				AnalysisResult FrameData = null;
-
-				if (Frame == null || Frame.Length == 0)
+				if (FrameData.Adult != null)
 				{
-					continue;
-				}
-
-				try
-				{
-					FrameData = JsonConvert.DeserializeObject<AnalysisResult>(Frame);
-				}
-				catch( Exception e )
-				{
-					System.Console.Error.WriteLine(e.ToString());
-				}
-
-				if(FrameData == null )
-				{
-					continue;
-				}
-
-				if( FrameData.Adult != null )
-				{
-					if( MergedResult.Adult == null )
+					if (MergedResult.Adult == null)
 					{
 						MergedResult.Adult = new Adult();
 					}
 
 					MergedResult.Adult.IsAdultContent |= FrameData.Adult.IsAdultContent;
-					MergedResult.Adult.AdultScore = Math.Max( MergedResult.Adult.AdultScore, FrameData.Adult.AdultScore );
+					MergedResult.Adult.AdultScore = Math.Max(MergedResult.Adult.AdultScore, FrameData.Adult.AdultScore);
 					MergedResult.Adult.IsRacyContent |= FrameData.Adult.IsRacyContent;
-					MergedResult.Adult.RacyScore = Math.Max( MergedResult.Adult.RacyScore, FrameData.Adult.RacyScore );
+					MergedResult.Adult.RacyScore = Math.Max(MergedResult.Adult.RacyScore, FrameData.Adult.RacyScore);
 				}
-				
-				if ( FrameData.Categories != null )
+
+				if (FrameData.Categories != null)
 				{
-					foreach( var Obj in FrameData.Categories )
+					foreach (var Obj in FrameData.Categories)
 					{
 						string Name = Obj.Name.ToLower();
 
 						bool Found = false;
-						foreach( var ExistingObj in NewCategories )
+						foreach (var ExistingObj in NewCategories)
 						{
-							if( ExistingObj.Name == Obj.Name )
+							if (ExistingObj.Name == Obj.Name)
 							{
-								if( Obj.Score > ExistingObj.Score )
+								if (Obj.Score > ExistingObj.Score)
 								{
 									ExistingObj.Detail = Obj.Detail;
 									ExistingObj.Score = Obj.Score;
@@ -154,12 +133,12 @@ namespace HestiaAnalyticsVision
 								Found = true;
 							}
 						}
-						
-						if( !Found )
+
+						if (!Found)
 						{
-							if ( !Filter.Ignore.Contains(Obj.Name) && !IsItemIgnored(Obj.Name, Obj.Score, Filter) )
+							if (!Filter.Ignore.Contains(Obj.Name) && !IsItemIgnored(Obj.Name, Obj.Score, Filter))
 							{
-								NewCategories.Add( Obj );
+								NewCategories.Add(Obj);
 							}
 						}
 					}
@@ -167,9 +146,9 @@ namespace HestiaAnalyticsVision
 
 				if (FrameData.Faces != null)
 				{
-					NewFaces.AddRange( FrameData.Faces );
+					NewFaces.AddRange(FrameData.Faces);
 				}
-				
+
 				if (FrameData.Tags != null)
 				{
 					foreach (var Tag in FrameData.Tags)
@@ -190,7 +169,7 @@ namespace HestiaAnalyticsVision
 
 						if (!Found)
 						{
-							if( !Filter.Ignore.Contains(Tag.Name) && !IsItemIgnored(Tag.Name, Tag.Confidence, Filter))
+							if (!Filter.Ignore.Contains(Tag.Name) && !IsItemIgnored(Tag.Name, Tag.Confidence, Filter))
 							{
 								NewTags.Add(Tag);
 							}
@@ -198,9 +177,9 @@ namespace HestiaAnalyticsVision
 					}
 				}
 
-				if(FrameData.Description != null )
-				{						
-					foreach ( var Tag in FrameData.Description.Tags )
+				if (FrameData.Description != null)
+				{
+					foreach (var Tag in FrameData.Description.Tags)
 					{
 						if (!Filter.Ignore.Contains(Tag) && !IsItemIgnored(Tag, 1.0, Filter) && !NewDescTags.Contains(Tag))
 						{
@@ -208,17 +187,17 @@ namespace HestiaAnalyticsVision
 						}
 					}
 
-					foreach( var Caption in FrameData.Description.Captions )
+					foreach (var Caption in FrameData.Description.Captions)
 					{
-						if( Caption.Confidence > Filter.MinDescriptionConfidence )
+						if (Caption.Confidence > Filter.MinDescriptionConfidence)
 						{
 							bool Found = false;
-							foreach( var Existing in NewCaptions )
+							foreach (var Existing in NewCaptions)
 							{
-								if( Existing.Text == Caption.Text )
+								if (Existing.Text == Caption.Text)
 								{
 									Found = true;
-									if( Caption.Confidence > Existing.Confidence )
+									if (Caption.Confidence > Existing.Confidence)
 									{
 										Existing.Confidence = Caption.Confidence;
 									}
@@ -240,7 +219,7 @@ namespace HestiaAnalyticsVision
 			MergedResult.Tags = NewTags.Count > 0 ? NewTags.ToArray() : null;
 
 			bool HasDescription = NewDescTags.Count > 0 || NewCaptions.Count > 0;
-			if( HasDescription )
+			if (HasDescription)
 			{
 				MergedResult.Description = new Description();
 				MergedResult.Description.Tags = NewDescTags.ToArray();

@@ -1,5 +1,6 @@
 ﻿using HestiaAnalyticsVision;
 using HestiaCore;
+using Microsoft.ProjectOxford.Vision.Contract;
 using Newtonsoft.Json;
 using SighthoundAPI;
 using System;
@@ -31,13 +32,13 @@ namespace HestiaAnalyticsServer
 				);
 			CognitiveEndpoint.AddHeader("Ocp-Apim-Subscription-Key", Settings.AzureCognitiveAPI.SubscriptionKey);
 
-			List<string> InputFiles = new List<string>();
+			/*List<string> InputFiles = new List<string>();
 			foreach( var Filename in Directory.EnumerateFiles(@"W:\VideoOut", "*.json") )
 			{
 				InputFiles.Add(File.ReadAllText(Filename));
 			}
 			
-			var ResultOutput = MergeClipJsonResults.MergeAndFilter( InputFiles, Settings.Filter );
+			var ResultOutput = MergeClipJsonResults.MergeAndFilter( InputFiles, Settings.Filter );*/
 
 			/*using (var TextWriter = new StringWriter())
 			using (var Writer = new Newtonsoft.Json.JsonTextWriter(TextWriter))
@@ -52,49 +53,50 @@ namespace HestiaAnalyticsServer
 			System.Console.WriteLine(ResultString);
 
 			return;*/
-			
-			List<string> ClipResults = new List<string>();
+
+			bool PersonFound = false;
+			string ClipCameraName = "";
+			int APICallCount = 0;
+			List<AnalysisResult> ClipResults = new List<AnalysisResult>();
 
 			FrameProcessor.OnClipStart += (string Filename) =>
 			{
+				PersonFound = false;
+				System.Console.WriteLine( $"New clip processing started for {Filename}" );
 				ClipResults.Clear();
+				APICallCount = 0;
 			};
 
 			FrameProcessor.OnClipEnd += (string Filename) =>
 			{
-				var Result = MergeClipJsonResults.MergeAndFilter(ClipResults, Settings.Filter);
+				if( ClipResults.Count > 0 )
+				{
+					var Result = MergeClipJsonResults.MergeAndFilter(ClipResults, Settings.Filter);
 
-				string ResultString = JsonConvert.SerializeObject(Result, Formatting.Indented);
-				System.Console.WriteLine(ResultString);
+					string ResultString = JsonConvert.SerializeObject(Result, Formatting.Indented);
+					System.Console.WriteLine(ResultString);
+
+					System.Console.WriteLine($"Clip processing finished, {APICallCount} API calls made.");
+				}
+				else
+				{
+					System.Console.WriteLine($"Clip processing finished, no motion detected.");
+				}
 			};
 
-			FrameProcessor.OnMotionDetectedFrame += (Bitmap frame, Rectangle rect, float frameTimestamp) =>
+			FrameProcessor.OnMotionDetectedFrame += (Bitmap frame, System.Drawing.Rectangle rect, long frameTimestamp) =>
 			{
-				using (MemoryStream MS = new MemoryStream())
+				var Result = MultiStageImageClassificationQuery.ClassifyImage( Settings.Filter, CognitiveEndpoint, @"W:\VideoOut", $"{ClipCameraName}_{frameTimestamp}", frame, rect, frameTimestamp);
+
+				ClipResults.Add( Result.Result );
+
+				APICallCount += Result.QueriesMade;
+				
+				if( Result.ContainsPerson && !PersonFound)
 				{
-					using (Bitmap NewBitmap = frame.Clone(rect, frame.PixelFormat))
-					{
+					PersonFound = true;
 
-						NewBitmap.Save(MS, ImageFormat.Jpeg);
-
-						NewBitmap.Save($"W:\\VideoOut\\Result_{Index++}.jpg");
-
-						var X = HestiaAnalyticsVision.AnalyzeImageQuery.CreateFromBytes(
-							CognitiveEndpoint,
-							new AnalyzeImageQuery.VisualFeatures[]
-							{
-							AnalyzeImageQuery.VisualFeatures.Tags,
-							AnalyzeImageQuery.VisualFeatures.Faces
-							},
-							new AnalyzeImageQuery.Details[] { },
-							MS.ToArray()
-						);
-
-						string AnalysisResult = X.GetAsString();
-						ClipResults.Add(AnalysisResult);
-
-						File.WriteAllText($"W:\\VideoOut\\Result_{Index++}.json", AnalysisResult);
-					}
+					System.Console.Out.WriteLine($"Person found in camera {ClipCameraName}");
 				}
 			};
 
@@ -169,10 +171,9 @@ namespace HestiaAnalyticsServer
 			SightHoundListener.OnDownloadedClip += (Clip clip, long ClipStart, long ClipSubIndex, string Filename) =>
 			{
 				System.Console.Out.WriteLine($"Downloaded clip from camera \"{clip.CameraName}\" at {clip.FriendlyTime} to {Filename}.");
-
-
-
-				FrameProcessor.Run( Filename );
+				
+				ClipCameraName = clip.CameraName;
+				FrameProcessor.Run( Filename, ClipStart );
 			};
 
 			SightHoundListener.Start();

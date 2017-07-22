@@ -12,11 +12,12 @@ namespace HestiaAnalyticsVision
 		private VideoFileReader Reader;
 
 		private MotionDetector Detector;
+		private SimpleBackgroundModelingDetector BackgroundDetector;
 
 		private MotionAnalysisSettings Settings;
 
 		public delegate void OnClipEventDelegate( string Filename );
-		public delegate void OnMotionDetectedFrameDelegate(Bitmap Frame, Rectangle ObjectArea, float frameTimestamp);
+		public delegate void OnMotionDetectedFrameDelegate(Bitmap Frame, Rectangle ObjectArea, long frameTimestamp);
 		public OnMotionDetectedFrameDelegate OnMotionDetectedFrame;
 		public OnClipEventDelegate OnClipStart;
 		public OnClipEventDelegate OnClipEnd;
@@ -25,7 +26,7 @@ namespace HestiaAnalyticsVision
 		{
 			this.Settings = Settings;
 
-			var BackgroundDetector = new SimpleBackgroundModelingDetector(true, true);
+			BackgroundDetector = new SimpleBackgroundModelingDetector(true, true);
 			BackgroundDetector.FramesPerBackgroundUpdate = Settings.FramesPerBackgroundUpdate;
 
 			//Avoid div0
@@ -34,11 +35,16 @@ namespace HestiaAnalyticsVision
 				Settings.MotionFramesPerAnalysis = 1;
 			}
 
-			Detector = new MotionDetector(BackgroundDetector, new BlobCountingObjectsProcessing( Settings.MinMotionWidth, Settings.MinMotionHeight, false));
+			Detector = new MotionDetector(BackgroundDetector, new BlobCountingObjectsProcessing( Settings.MinMotionWidth, Settings.MinMotionHeight, Settings.DebugDrawMotionBoxes));
 		}
 
-		public void Run(string Filename)
+		public void Run(string Filename, long ClipStartTimeMS )
 		{
+			if( Settings.ResetBackgroundBetweenClips )
+			{
+				BackgroundDetector.Reset();
+			}
+
 			Reader = new VideoFileReader();
 
 			try
@@ -56,14 +62,26 @@ namespace HestiaAnalyticsVision
 
 			int RealFrameIndex = 0;
 
+			bool HasIgnoredFrameMotion = false;
+			bool ProcessedFrame = false;
+
 			Bitmap NextFrame;
 			while((NextFrame = Reader.ReadVideoFrame())!=null)
 			{
+				long FrameTime = ClipStartTimeMS + (RealFrameIndex * 1000 * Reader.FrameRate.Numerator) / Reader.FrameRate.Denominator;
+
 				float motionLevel = Detector.ProcessFrame(NextFrame);
-				
-				// check objects' count
-				if (Detector.MotionProcessingAlgorithm is BlobCountingObjectsProcessing)
+
+				if(!(Detector.MotionProcessingAlgorithm is BlobCountingObjectsProcessing))
 				{
+					throw new Exception("Motion processing algorithm is incompatible.");
+				}
+
+				// check objects' count
+				if(motionLevel > Settings.MinMotionLevel)
+				{
+					ProcessedFrame = true;
+
 					var detector = (BlobCountingObjectsProcessing)Detector.MotionProcessingAlgorithm;
 
 					int MinX = int.MaxValue;
@@ -92,15 +110,25 @@ namespace HestiaAnalyticsVision
 						{
 							Rectangle SelectedArea = new Rectangle(MinX, MinY, MaxX - MinX, MaxY - MinY);
 
-							OnMotionDetectedFrame(NextFrame, SelectedArea, (float)RealFrameIndex / (float)Reader.FrameRate);
+							OnMotionDetectedFrame(NextFrame, SelectedArea, FrameTime);
 						}
 						Index++;
 					}
 
 					RealFrameIndex++;
 				}
+				else
+				{
+					HasIgnoredFrameMotion = true;
+				}
 			}
 
+			if(HasIgnoredFrameMotion && !ProcessedFrame)
+			{
+				System.Console.Out.WriteLine("Motion detected but it was below the motion threshold.");
+			}
+
+			Reader.Close();
 			OnClipEnd(Filename);
 		}
 	}

@@ -13,5 +13,8 @@ namespace HestiaAnalyticsVision
 		public int FramesPerBackgroundUpdate;
 		public int BorderPaddingPixels;
 		public int MotionFramesPerAnalysis;
+		public bool DebugDrawMotionBoxes;
+		public bool ResetBackgroundBetweenClips;
+		public double MinMotionLevel;
 	}
 }

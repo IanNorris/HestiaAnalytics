@@ -49,7 +49,7 @@ namespace HestiaCore
 			{
 				Response.Result.GetResponseStream().CopyTo(MemStream);
 
-				return Encoding.ASCII.GetString( MemStream.GetBuffer() );
+				return Encoding.ASCII.GetString( MemStream.ToArray() );
 			}
 		}
 

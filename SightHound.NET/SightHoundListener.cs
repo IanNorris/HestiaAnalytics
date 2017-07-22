@@ -14,9 +14,7 @@ namespace SighthoundAPI
 {
 	public class SightHoundListener
 	{
-		private const long RedownloadClipPeriod = 5 * 60 * 1000;
-		private const long ClipBufferWindowMS = 10 * 1000;
-
+		private const long MaxClipLengthMS = (2 * 60 + 15) * 1000; //Longest clip length observed was 2m3s, rounded up to 2m15s
 		private Regex ArchiveFilenameRegex = new Regex( @"(\d+)-(\d+)(?:-(\d+))?" );
 
 		private class Rule
@@ -40,8 +38,9 @@ namespace SighthoundAPI
 
 		//Camera data
 		private long LastStateGatherTime = 0;
-		//private long LastClipGatherTime = //1497313459933; //Should be DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
-		private long LastClipGatherTime = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+		private long LastClipGatherTime = 1497313459933;
+		//private long LastClipGatherTime = 1499472000000;
+		//private long LastClipGatherTime = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 		private long LastClipEndTime = 0;
 		private long LastClipEndTimeNext = 0;
 		private Dictionary<string, Camera> Cameras;
@@ -191,13 +190,17 @@ namespace SighthoundAPI
 					{
 						int ClipFolder = Clip.Start.Seconds / 100000;
 						int PreviousClipFolder = ClipFolder - 1;
-						
+
+						long LastClipBeforeStartTime = long.MinValue;
+						string LastClipBeforeStartTimeFilename = "";
+
 						string[] ArchiveDirectories = new string[]
 						{
 							Path.Combine(Settings.SighthoundArchive, Clip.CameraName.ToLower(), ClipFolder.ToString()),
 							Path.Combine(Settings.SighthoundArchive, Clip.CameraName.ToLower(), PreviousClipFolder.ToString())
 						};
-						
+
+						bool Found = false;
 						foreach (var Dir in ArchiveDirectories)
 						{
 							List<string> FilenamesInRange = new List<string>();
@@ -217,8 +220,16 @@ namespace SighthoundAPI
 										long Millseconds = int.Parse( FilenameParts.Groups[2].Value );
 										long FilenameTime = Seconds * 1000 + Millseconds;
 
-										if(		FilenameTime > Clip.Start.UnixTime - ClipBufferWindowMS
-											&&	FilenameTime < Clip.End.UnixTime + ClipBufferWindowMS)
+										if(		FilenameTime > LastClipBeforeStartTime 
+											&&	FilenameTime < Clip.Start.UnixTime
+											&&	FilenameTime + MaxClipLengthMS >= Clip.Start.UnixTime )
+										{
+											LastClipBeforeStartTime = FilenameTime;
+											LastClipBeforeStartTimeFilename = FilenameWithoutExt;
+										}
+
+										if (	FilenameTime >= Clip.Start.UnixTime
+											&&	FilenameTime <= Clip.End.UnixTime)
 										{
 											FilenamesInRange.Add(FilenameWithoutExt);
 										}
@@ -227,7 +238,14 @@ namespace SighthoundAPI
 							}
 							catch( DirectoryNotFoundException )
 							{
+								Console.Error.WriteLine($"Directory {Dir} was not found, the Sighthound cache may be too small.");
+							}
 
+							if (LastClipBeforeStartTime != long.MinValue)
+							{
+								FilenamesInRange.Add(LastClipBeforeStartTimeFilename);
+								LastClipBeforeStartTime = long.MinValue;
+								LastClipBeforeStartTimeFilename = "";
 							}
 
 							var ClipUnixTime = new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc);
@@ -250,10 +268,16 @@ namespace SighthoundAPI
 									File.Copy(Path.Combine( Dir, $"{Filename}.mp4"), TargetFilename);
 
 									OnDownloadedClip(Clip, Clip.Start.UnixTime, SubClipIndex, TargetFilename );
+
+									Found = true;
 								}
 								catch (IOException Ex)
 								{
-									if( !Ex.Message.Contains("already exists") )
+									if( Ex.Message.Contains("already exists") )
+									{
+										Found = true;
+									}
+									else
 									{
 										throw Ex;
 									}
@@ -263,7 +287,14 @@ namespace SighthoundAPI
 							}
 						}
 
-						ClipId++;
+						if( Found )
+						{
+							ClipId++;
+						}
+						else
+						{
+							Console.Error.WriteLine($"Unable to find clip for {Clip.Start.Seconds}");
+						}
 					}
 					else
 					{

@@ -12,5 +12,6 @@ namespace HestiaAnalyticsVision
 		public Dictionary<string, float> MinimumConfidence;
 		public double MinConfidence;
 		public double MinDescriptionConfidence;
+		public long JpegQuality;
 	}
 }
